@@ -1,27 +1,40 @@
 from flask import Flask, request, jsonify
-import openai
 import requests
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import openai
+import os
+from dotenv import load_dotenv
 
-app = Flask(__name__)
-CORS(app) # Allows frontend to communicate with backend
+# Load environment variables from .env file
+load_dotenv()
 
-# Set OpenAI API Key (Replace with your actual key)
-OPENAI_API_KEY = "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"
+# Get API keys securely
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+COINMARKETCAP_API_KEY = os.getenv("COINMARKETCAP_API_KEY")
+
 openai.api_key = OPENAI_API_KEY
 
-# CoinGecko API URL for real-time crypto data
-COINGECKO_API_URL = "https://api.coingecko.com/api/v3/simple/price"
+# Initialize Flask App
+app = Flask(__name__)
+CORS(app)
 
-# AI Chatbot Endpoint
+# Rate Limiting
+limiter = Limiter(get_remote_address, app=app, default_limits=["10 per minute"])
+
+# API URLs
+COINGECKO_API_URL = "https://api.coingecko.com/api/v3/simple/price"
+COINMARKETCAP_API_URL = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
+
+### 🚀 AI Chatbot Endpoint
 @app.route("/chat", methods=["POST"])
+@limiter.limit("5 per minute")
 def chat():
 user_message = request.json.get("message", "")
-
 if not user_message:
 return jsonify({"error": "No message provided"}), 400
 
-# OpenAI GPT-4 API request
 try:
 response = openai.ChatCompletion.create(
 model="gpt-4",
@@ -30,23 +43,11 @@ messages=[
 {"role": "user", "content": user_message}
 ]
 )
-ai_reply = response["choices"][0]["message"]["content"]
-return jsonify({"response": ai_reply})
+return jsonify({"response": response["choices"][0]["message"]["content"]})
 except Exception as e:
 return jsonify({"error": str(e)}), 500
 
-# Crypto Market Data Endpoint
-@app.route("/crypto-price", methods=["GET"])
-def crypto_price():
-coin = request.args.get("coin", "bitcoin").lower()
-params = {"ids": coin, "vs_currencies": "usd"}
-response = requests.get(COINGECKO_API_URL, params=params)
+# Other endpoints...
 
-if response.status_code == 200:
-return jsonify(response.json())
-else:
-return jsonify({"error": "Failed to fetch crypto data"}), 500
-
-# Run the Flask app
 if __name__ == "__main__":
 app.run(debug=True)
